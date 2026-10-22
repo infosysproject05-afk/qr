@@ -115,6 +115,14 @@ const server = http.createServer((req, res) => {
   if (pathname.startsWith('/api/credentials/') && req.method === 'GET') {
     const id = pathname.replace('/api/credentials/', '');
     if (credentialStore.has(id)) {
+      if (String(req.headers.accept || '').includes('text/html')) {
+        const protocol = req.headers['x-forwarded-proto'] || 'http';
+        const host = req.headers.host || `localhost:${PORT}`;
+        const credentialUrl = `${protocol}://${host}${pathname}`;
+        res.writeHead(302, { Location: `/?vc=${encodeURIComponent(credentialUrl)}` });
+        res.end();
+        return;
+      }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(credentialStore.get(id)));
     } else {

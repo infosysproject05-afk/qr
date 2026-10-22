@@ -82,7 +82,6 @@ function App() {
     if (pageUrl.searchParams.has('vc') || /(?:^|[?&])vc=/.test(pageUrl.hash)) {
       try {
         const target = parseCredentialTarget(pageUrl.href);
-        setInput(target);
         verifyUrl(target);
       } catch (linkError) {
         setError(linkError.message);
@@ -207,7 +206,6 @@ function App() {
       return;
     }
 
-    setInput(target);
     verifyUrl(target);
   };
 

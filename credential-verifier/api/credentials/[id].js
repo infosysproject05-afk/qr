@@ -25,6 +25,12 @@ export default function handler(request, response) {
       response.status(404).json({ error: 'Credential not found' });
       return;
     }
+    const acceptsHtml = String(request.headers.accept || '').includes('text/html');
+    if (acceptsHtml) {
+      const credentialUrl = `https://${request.headers['x-forwarded-host'] || request.headers.host}/api/credentials/${id}`;
+      response.status(302).setHeader('Location', `/?vc=${encodeURIComponent(credentialUrl)}`).end();
+      return;
+    }
     response.status(200).json(store.get(id));
     return;
   }
