@@ -1,0 +1,21 @@
+{
+  "name": "credential-verifier",
+  "version": "1.0.0",
+  "description": "Independent Web Verifier for W3C Verifiable Credentials and Learner Credential Wallet",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "verifiable-credentials",
+    "did",
+    "verifier",
+    "dcc",
+    "w3c",
+    "open-badges",
+    "wallet"
+  ],
+  "author": "",
+  "license": "MIT"
+}
