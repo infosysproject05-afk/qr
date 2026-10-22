@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import jsQR from 'jsqr';
+import QrScanner from 'qr-scanner';
 import { SAMPLE_CREDENTIAL } from './sampleCredential';
+
+QrScanner.WORKER_PATH = new URL('qr-scanner/qr-scanner-worker.min.js', import.meta.url).toString();
 
 const STEP_LABELS = [
   'Fetching payload from decentralized storage',
@@ -71,6 +74,7 @@ function App() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const cameraStream = useRef(null);
+  const qrScanner = useRef(null);
   const scanFrame = useRef(null);
 
   useEffect(() => {
@@ -192,39 +196,39 @@ function App() {
 
   const decodeQrImage = file => {
     setQrMessage('Reading QR image...');
-    const image = new Image();
-    const objectUrl = URL.createObjectURL(file);
-    image.onload = () => {
-      try {
-        const canvas = canvasRef.current || document.createElement('canvas');
-        const scale = Math.min(1, 1800 / Math.max(image.naturalWidth, image.naturalHeight));
-        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-        const context = canvas.getContext('2d', { willReadFrequently: true });
-        context.drawImage(image, 0, 0, canvas.width, canvas.height);
-        const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
-        const result = jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: 'attemptBoth' });
-        URL.revokeObjectURL(objectUrl);
-        if (result?.data) handleQrPayload(result.data);
-        else {
+    QrScanner.scanImage(file, { returnDetailedScanResult: true })
+      .then(result => handleQrPayload(result.data || result))
+      .catch(() => {
+        const image = new Image();
+        const objectUrl = URL.createObjectURL(file);
+        image.onload = () => {
+          try {
+            const canvas = canvasRef.current || document.createElement('canvas');
+            const scale = Math.min(1, 1800 / Math.max(image.naturalWidth, image.naturalHeight));
+            canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+            canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+            const context = canvas.getContext('2d', { willReadFrequently: true });
+            context.drawImage(image, 0, 0, canvas.width, canvas.height);
+            const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+            const result = jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: 'attemptBoth' });
+            URL.revokeObjectURL(objectUrl);
+            if (result?.data) handleQrPayload(result.data);
+            else throw new Error('No QR code was detected.');
+          } catch (decodeError) {
+            URL.revokeObjectURL(objectUrl);
+            setQrOpen(false);
+            setQrMessage('');
+            setError(`${decodeError.message} Try a clear, uncropped QR image.`);
+          }
+        };
+        image.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
           setQrOpen(false);
           setQrMessage('');
-          setError('No readable QR code was found in that image. Try a sharper, well-lit QR image.');
-        }
-      } catch (decodeError) {
-        URL.revokeObjectURL(objectUrl);
-        setQrOpen(false);
-        setQrMessage('');
-        setError(`Unable to decode the QR image: ${decodeError.message}`);
-      }
-    };
-    image.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      setQrOpen(false);
-      setQrMessage('');
-      setError('Unable to read the selected QR image.');
-    };
-    image.src = objectUrl;
+          setError('Unable to read the selected QR image.');
+        };
+        image.src = objectUrl;
+      });
   };
 
   const startCamera = async () => {
@@ -233,33 +237,24 @@ function App() {
       return;
     }
     try {
-      cameraStream.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
-      videoRef.current.srcObject = cameraStream.current;
-      await videoRef.current.play();
+      qrScanner.current = new QrScanner(
+        videoRef.current,
+        result => handleQrPayload(result.data || result),
+        { preferredCamera: 'environment', returnDetailedScanResult: true, highlightScanRegion: true, highlightCodeOutline: true, onDecodeError: () => {} }
+      );
+      await qrScanner.current.start();
       setCameraActive(true);
-      const scan = () => {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        if (!video || !canvas || video.readyState < 2 || !cameraStream.current) {
-          scanFrame.current = requestAnimationFrame(scan);
-          return;
-        }
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const context = canvas.getContext('2d', { willReadFrequently: true });
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const result = jsQR(context.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
-        if (result?.data) handleQrPayload(result.data);
-        else scanFrame.current = requestAnimationFrame(scan);
-      };
-      scanFrame.current = requestAnimationFrame(scan);
     } catch (cameraError) {
+      stopCamera();
       setError(`Camera access failed: ${cameraError.message}`);
     }
   };
 
   const stopCamera = () => {
     if (scanFrame.current) cancelAnimationFrame(scanFrame.current);
+    qrScanner.current?.stop();
+    qrScanner.current?.destroy();
+    qrScanner.current = null;
     cameraStream.current?.getTracks().forEach(track => track.stop());
     cameraStream.current = null;
     setCameraActive(false);
