@@ -38,12 +38,15 @@ It serves as a 100% compatible drop-in replacement for `https://verifierplus.org
 
 ## 🚀 Running Locally
 
-The verifier uses native Node.js with **zero external dependencies**:
+The verifier uses React with Vite for the frontend and a lightweight Node.js server for proxy/API routes:
 
 ```bash
 cd credential-verifier
+npm install
 npm start
 ```
+
+For frontend development with hot reload, run `npm run dev` and keep the Node server running on port 3000 for API proxy requests.
 
 Open your browser at:
 ```

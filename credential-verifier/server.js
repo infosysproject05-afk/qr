@@ -12,7 +12,9 @@ const url = require('url');
 const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
-const PUBLIC_DIR = __dirname;
+const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'dist'))
+  ? path.join(__dirname, 'dist')
+  : __dirname;
 
 // In-memory store for credentials posted via /api/credentials fallback
 const credentialStore = new Map();
