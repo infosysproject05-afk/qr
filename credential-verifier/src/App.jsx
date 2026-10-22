@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import jsQR from 'jsqr';
 import QrScanner from 'qr-scanner';
 import { SAMPLE_CREDENTIAL } from './sampleCredential';
-
-QrScanner.WORKER_PATH = new URL('qr-scanner/qr-scanner-worker.min.js', import.meta.url).toString();
+import { parseCredentialTarget } from './qrPayload.mjs';
+import { extractStudentProfile, profileLabel } from './studentProfile.mjs';
+import { scanQrImage } from './qrImage.mjs';
 
 const STEP_LABELS = [
   'Fetching payload from decentralized storage',
@@ -48,17 +48,12 @@ async function fetchCredential(targetUrl) {
   throw new Error(`Unable to fetch credential payload from: ${targetUrl}`);
 }
 
-function parseTarget(value) {
-  let target = value.trim();
-  if (target.includes('#verify?vc=')) target = target.split('#verify?vc=')[1];
-  else if (target.includes('?vc=')) target = target.split('?vc=')[1];
-  try { return decodeURIComponent(target); } catch { return target; }
-}
-
 function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('veritrust-theme') || 'dark');
   const [input, setInput] = useState('');
   const [credential, setCredential] = useState(null);
+  const [studentProfile, setStudentProfile] = useState(null);
+  const [profilePayload, setProfilePayload] = useState(null);
   const [source, setSource] = useState(null);
   const [steps, setSteps] = useState(() => STEP_LABELS.map(() => ''));
   const [status, setStatus] = useState('idle');
@@ -72,10 +67,8 @@ function App() {
   const fileInput = useRef(null);
   const qrImageInput = useRef(null);
   const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const cameraStream = useRef(null);
   const qrScanner = useRef(null);
-  const scanFrame = useRef(null);
+  const qrHandled = useRef(false);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -85,20 +78,36 @@ function App() {
   useEffect(() => () => stopCamera(), []);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const hash = window.location.hash;
-    const hashQuery = hash.includes('?') ? new URLSearchParams(hash.split('?')[1]) : new URLSearchParams(hash.replace('#', ''));
-    const target = hashQuery.get('vc') || params.get('vc');
-    if (target) {
-      setInput(target);
-      verifyUrl(target);
+    const pageUrl = new URL(window.location.href);
+    if (pageUrl.searchParams.has('vc') || /(?:^|[?&])vc=/.test(pageUrl.hash)) {
+      try {
+        const target = parseCredentialTarget(pageUrl.href);
+        setInput(target);
+        verifyUrl(target);
+      } catch (linkError) {
+        setError(linkError.message);
+      }
     }
   }, []);
 
   const verifyData = async (data, sourceLabel) => {
-    setStatus('loading');
     setError('');
     setCredential(null);
+    setStudentProfile(null);
+    setProfilePayload(null);
+    setTab('certificate');
+    const profile = extractStudentProfile(data);
+    if (profile) {
+      setStudentProfile(profile);
+      setProfilePayload(data);
+      setSource(sourceLabel);
+      setStatus('result');
+      if (/^https?:\/\//i.test(sourceLabel)) history.replaceState(null, '', `#verify?vc=${encodeURIComponent(sourceLabel)}`);
+      setTimeout(() => document.getElementById('result-section')?.scrollIntoView({ behavior: 'smooth' }), 50);
+      return;
+    }
+
+    setStatus('loading');
     setSteps(STEP_LABELS.map((_, index) => index === 0 ? 'pass' : ''));
     const vc = extractCredential(data);
     if (!vc || typeof vc !== 'object') throw new Error('The payload is not a valid credential object.');
@@ -131,13 +140,13 @@ function App() {
     setCredential(vc);
     setSource(sourceLabel);
     setStatus('result');
-    if (!sourceLabel.startsWith('sample://')) history.replaceState(null, '', `#verify?vc=${encodeURIComponent(sourceLabel)}`);
+    if (/^https?:\/\//i.test(sourceLabel)) history.replaceState(null, '', `#verify?vc=${encodeURIComponent(sourceLabel)}`);
     setTimeout(() => document.getElementById('result-section')?.scrollIntoView({ behavior: 'smooth' }), 50);
   };
 
   const verifyUrl = async value => {
-    const target = parseTarget(value);
     try {
+      const target = parseCredentialTarget(value);
       await verifyData(await fetchCredential(target), target);
     } catch (verificationError) {
       setStatus('idle');
@@ -172,96 +181,91 @@ function App() {
   };
 
   const handleQrPayload = payload => {
-    const value = payload.trim();
+    if (qrHandled.current) return;
+    const value = String(payload || '').trim();
     if (!value) {
-      setError('The QR code did not contain a credential or verification link.');
+      setQrMessage('The QR code is empty. Try another code.');
       return;
     }
 
+    let parsedJson;
+    let target;
+    try {
+      if (value.startsWith('{') || value.startsWith('[')) parsedJson = JSON.parse(value);
+      else target = parseCredentialTarget(value);
+    } catch (scanError) {
+      setQrMessage(scanError.message);
+      return;
+    }
+
+    qrHandled.current = true;
     setQrOpen(false);
     setQrMessage('');
     stopCamera();
-    if (value.startsWith('{') || value.startsWith('[')) {
-      try {
-        verifyData(JSON.parse(value), 'qr://json-payload').catch(verificationError => setError(verificationError.message));
-      } catch (parseError) {
-        setError(`The QR code contains invalid JSON: ${parseError.message}`);
-      }
+    if (parsedJson) {
+      verifyData(parsedJson, 'qr://json-payload').catch(verificationError => setError(verificationError.message));
       return;
     }
 
-    setInput(value);
-    verifyUrl(value);
+    setInput(target);
+    verifyUrl(target);
   };
 
-  const decodeQrImage = file => {
+  const decodeQrImage = async file => {
     setQrMessage('Reading QR image...');
-    QrScanner.scanImage(file, { returnDetailedScanResult: true })
-      .then(result => handleQrPayload(result.data || result))
-      .catch(() => {
-        const image = new Image();
-        const objectUrl = URL.createObjectURL(file);
-        image.onload = () => {
-          try {
-            const canvas = canvasRef.current || document.createElement('canvas');
-            const scale = Math.min(1, 1800 / Math.max(image.naturalWidth, image.naturalHeight));
-            canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-            canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-            const context = canvas.getContext('2d', { willReadFrequently: true });
-            context.drawImage(image, 0, 0, canvas.width, canvas.height);
-            const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
-            const result = jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: 'attemptBoth' });
-            URL.revokeObjectURL(objectUrl);
-            if (result?.data) handleQrPayload(result.data);
-            else throw new Error('No QR code was detected.');
-          } catch (decodeError) {
-            URL.revokeObjectURL(objectUrl);
-            setQrOpen(false);
-            setQrMessage('');
-            setError(`${decodeError.message} Try a clear, uncropped QR image.`);
-          }
-        };
-        image.onerror = () => {
-          URL.revokeObjectURL(objectUrl);
-          setQrOpen(false);
-          setQrMessage('');
-          setError('Unable to read the selected QR image.');
-        };
-        image.src = objectUrl;
-      });
+    try {
+      const result = await QrScanner.scanImage(file, { returnDetailedScanResult: true });
+      handleQrPayload(result.data || result);
+      return;
+    } catch {
+      if (qrHandled.current) return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    try {
+      const image = new Image();
+      image.src = objectUrl;
+      await image.decode();
+      if (!qrHandled.current) handleQrPayload(await scanQrImage(image, setQrMessage));
+    } catch (decodeError) {
+      if (!qrHandled.current) setQrMessage(decodeError.message || 'Unable to read the selected QR image.');
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
   };
 
   const startCamera = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      setError('Camera scanning requires HTTPS or localhost and a supported browser.');
+      setQrMessage('Camera scanning requires HTTPS or localhost and a supported browser.');
       return;
     }
+    if (qrScanner.current) return;
     try {
-      qrScanner.current = new QrScanner(
+      setQrMessage('Starting camera...');
+      setCameraActive(true);
+      const scanner = new QrScanner(
         videoRef.current,
         result => handleQrPayload(result.data || result),
         { preferredCamera: 'environment', returnDetailedScanResult: true, highlightScanRegion: true, highlightCodeOutline: true, onDecodeError: () => {} }
       );
-      await qrScanner.current.start();
-      setCameraActive(true);
+      qrScanner.current = scanner;
+      await scanner.start();
+      if (qrScanner.current === scanner && !qrHandled.current) setQrMessage('Point the camera at a QR code.');
     } catch (cameraError) {
       stopCamera();
-      setError(`Camera access failed: ${cameraError.message}`);
+      setQrMessage(`Camera access failed: ${cameraError.message}`);
     }
   };
 
   const stopCamera = () => {
-    if (scanFrame.current) cancelAnimationFrame(scanFrame.current);
     qrScanner.current?.stop();
     qrScanner.current?.destroy();
     qrScanner.current = null;
-    cameraStream.current?.getTracks().forEach(track => track.stop());
-    cameraStream.current = null;
     setCameraActive(false);
   };
 
   const reset = () => {
-    setCredential(null); setSource(null); setStatus('idle'); setInput(''); setError('');
+    setCredential(null); setStudentProfile(null); setProfilePayload(null); setSource(null); setStatus('idle'); setInput(''); setError('');
     setSteps(STEP_LABELS.map(() => ''));
     history.replaceState(null, '', window.location.pathname);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -307,14 +311,14 @@ function App() {
       <section className="hero-section">
         <div className="hero-chip">◈ Decentralized Credential Verification</div>
         <h1 className="hero-headline">Instant, Tamper-Evident<br /><span className="gradient-text">Verifiable Credential</span> Verification</h1>
-        <p className="hero-subtext">Scan a QR code, follow a shared public link, or paste a cryptographic JSON payload to verify authenticity, issuer identity, and tampering.</p>
+        <p className="hero-subtext">Scan a QR code, follow a shared link, or paste JSON to view a credential or student profile.</p>
         <div className="input-card">
           <form className="verify-form" onSubmit={event => { event.preventDefault(); if (input.trim()) verifyUrl(input); }}>
             <div className="input-field-wrapper"><span className="input-icon">↗</span><input className="url-input" value={input} onChange={event => setInput(event.target.value)} placeholder="Paste a public credential link..." autoComplete="off" /><button type="button" className={`clear-btn ${input ? '' : 'hidden'}`} onClick={() => setInput('')} aria-label="Clear input">×</button></div>
             <button className="btn btn-primary" type="submit">Verify Credential <span className="btn-arrow">→</span></button>
           </form>
           <div className="quick-actions">
-            <button className="action-chip" type="button" onClick={() => { setQrMessage(''); setQrOpen(true); }}>▦ Scan QR Code</button>
+            <button className="action-chip" type="button" onClick={() => { qrHandled.current = false; setQrMessage(''); setQrOpen(true); }}>▦ Scan QR Code</button>
             <button className="action-chip" type="button" onClick={() => fileInput.current?.click()}>↑ Upload JSON<input ref={fileInput} type="file" accept=".json,.jsonld,application/json,application/ld+json" className="hidden" onChange={handleFile} /></button>
             <button className="action-chip" type="button" onClick={() => setPasteOpen(true)}>‹› Paste Raw JSON</button>
             <button className="action-chip sample-chip" type="button" onClick={loadSample}>★ Try Sample Credential</button>
@@ -326,10 +330,11 @@ function App() {
       {isLoading && <section className="progress-section"><div className="progress-card"><div className="progress-header"><div className="spinner-ring" /><div><h3 className="progress-title">Verifying Credential Authenticity</h3><p className="progress-subtitle">Performing 5-point cryptographic proof & trust registry audit</p></div></div><div className="progress-steps">{STEP_LABELS.map((label, index) => <div className={`step-item ${steps[index]}`} key={label}><span className="step-icon">{steps[index] === 'pass' ? '✓' : index + 1}</span><span>{label}</span></div>)}</div></div></section>}
 
       {credential && details && <Result credential={credential} details={details} isValid={isValid} tab={tab} setTab={setTab} reset={reset} downloadJson={downloadJson} copyShare={copyShare} source={source} />}
+      {studentProfile && <StudentProfileResult profile={studentProfile} payload={profilePayload} source={source} tab={tab} setTab={setTab} reset={reset} />}
     </main>
 
-    {pasteOpen && <div className="modal-backdrop" role="presentation"><div className="modal-card"><button className="modal-close" onClick={() => setPasteOpen(false)} aria-label="Close">×</button><h2>Paste Credential JSON</h2><textarea value={pasteValue} onChange={event => setPasteValue(event.target.value)} placeholder="Paste a W3C Verifiable Credential JSON payload..." /><button className="btn btn-primary" onClick={handlePaste}>Verify JSON</button></div></div>}
-    {qrOpen && <div className="modal-backdrop" role="presentation"><div className="modal-card qr-modal"><button className="modal-close" onClick={() => { stopCamera(); setQrOpen(false); }} aria-label="Close">×</button><h2>Scan QR Code</h2><p className="modal-help">Use your camera or select a QR image. The code may contain a verification URL or raw credential JSON.</p>{qrMessage && <p className="qr-message">{qrMessage}</p>}<video ref={videoRef} className={cameraActive ? 'qr-video' : 'qr-video hidden'} playsInline muted /><canvas ref={canvasRef} className="hidden" /><div className={!cameraActive ? 'qr-placeholder' : 'hidden'}>Camera preview will appear here</div><div className="modal-actions"><button className="btn btn-secondary" onClick={startCamera}>Start Camera</button><button className="btn btn-outline" onClick={() => qrImageInput.current?.click()}>Upload QR Image<input ref={qrImageInput} type="file" accept="image/*" className="hidden" onChange={event => { const [file] = event.target.files; if (file) decodeQrImage(file); event.target.value = ''; }} /></button></div></div></div>}
+    {pasteOpen && <div className="modal-backdrop" role="presentation"><div className="modal-card"><button className="modal-close" onClick={() => setPasteOpen(false)} aria-label="Close">×</button><h2>Paste Credential or Student Profile JSON</h2><textarea value={pasteValue} onChange={event => setPasteValue(event.target.value)} placeholder="Paste credential or studentProfile JSON..." /><button className="btn btn-primary" onClick={handlePaste}>View JSON</button></div></div>}
+    {qrOpen && <div className="modal-backdrop" role="presentation"><div className="modal-card qr-modal"><button className="modal-close" onClick={() => { qrHandled.current = true; stopCamera(); setQrOpen(false); }} aria-label="Close">×</button><h2>Scan QR Code</h2><p className="modal-help">Use your camera or select a QR image. The code may contain a verification URL or raw credential JSON.</p>{qrMessage && <p className="qr-message">{qrMessage}</p>}<video ref={videoRef} className={cameraActive ? 'qr-video' : 'qr-video hidden'} playsInline muted /><div className={!cameraActive ? 'qr-placeholder' : 'hidden'}>Camera preview will appear here</div><div className="modal-actions"><button className="btn btn-secondary" onClick={startCamera}>Start Camera</button><button className="btn btn-outline" onClick={() => qrImageInput.current?.click()}>Upload QR Image<input ref={qrImageInput} type="file" accept="image/*" className="hidden" onChange={event => { const [file] = event.target.files; if (file) decodeQrImage(file); event.target.value = ''; }} /></button></div></div></div>}
   </>;
 }
 
@@ -346,6 +351,65 @@ function Result({ credential, details, isValid, tab, setTab, reset, downloadJson
     {tab === 'claims' && <div className="claims-grid">{claims.map(([key, value]) => <div className="claim-box" key={key}><div className="claim-title">{key}</div><div className="claim-value">{String(value)}</div></div>)}</div>}
     {tab === 'json' && <div className="json-panel"><div className="json-actions"><button className="btn btn-secondary btn-sm" onClick={() => navigator.clipboard?.writeText(JSON.stringify(credential, null, 2))}>Copy JSON</button><button className="btn btn-secondary btn-sm" onClick={downloadJson}>Download JSON</button></div><pre>{JSON.stringify(credential, null, 2)}</pre></div>}
   </section>;
+}
+
+const IDENTITY_FIELDS = ['fullName', 'apaarId', 'pen', 'dateOfBirth', 'gender'];
+const ACADEMIC_FIELDS = ['academicYear', 'grade', 'section', 'rollNo', 'attendancePercentage'];
+
+function StudentProfileResult({ profile, payload, source, tab, setTab, reset }) {
+  const identity = IDENTITY_FIELDS.filter(key => key in profile).map(key => [key, profile[key]]);
+  const academic = ACADEMIC_FIELDS.filter(key => key in profile).map(key => [key, profile[key]]);
+  const school = profile.schoolDetails && typeof profile.schoolDetails === 'object' && !Array.isArray(profile.schoolDetails)
+    ? Object.entries(profile.schoolDetails)
+    : [];
+  const other = Object.entries(profile).filter(([key]) => ![...IDENTITY_FIELDS, ...ACADEMIC_FIELDS, 'schoolDetails', 'skills'].includes(key));
+  const tabs = [['certificate', 'Certificate'], ['verification', 'Verification'], ['audit', 'Audit'], ['json', 'Raw JSON']];
+  const json = JSON.stringify(payload, null, 2);
+  const downloadProfile = () => {
+    const link = document.createElement('a');
+    link.href = `data:application/json;charset=utf-8,${encodeURIComponent(json)}`;
+    link.download = 'student-profile.json';
+    link.click();
+  };
+
+  return <section className="result-section student-profile" id="result-section">
+    <div className="status-banner profile-status">
+      <div className="status-icon-wrap">i</div>
+      <div className="status-info"><div className="status-headline">Student Profile: {profile.fullName}</div><div className="status-subline">Profile data loaded. No digital proof was provided, so authenticity is unverified.</div></div>
+      <div className="status-actions"><button className="btn btn-secondary btn-sm" onClick={() => { setTab('certificate'); setTimeout(() => window.print(), 50); }}>Print / PDF</button><button className="btn btn-outline btn-sm" onClick={reset}>View Another</button></div>
+    </div>
+    <div className="tabs-nav" role="tablist" aria-label="Student profile views">{tabs.map(([key, label]) =>
+      <button key={key} className={`tab-btn ${tab === key ? 'active' : ''}`} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>{label}</button>
+    )}</div>
+    {tab === 'certificate' && <div className="certificate-container profile-certificate-panel" id="tab-certificate"><div className="certificate-frame student-certificate">
+      <div className="student-cert-heading"><span className="cert-pretitle">Student academic record</span><strong>{profile.schoolDetails?.schoolName || 'Student Profile'}</strong><span>{profile.schoolDetails?.board || ''}</span></div>
+      <div className="student-cert-name"><span>Presented for</span><h2>{profile.fullName}</h2><p>{[profile.grade && `Grade ${profile.grade}`, profile.section && `Section ${profile.section}`, profile.academicYear && `Academic year ${profile.academicYear}`].filter(Boolean).join(' · ')}</p></div>
+      <ProfileGroup title="Student identity" entries={identity} />
+      <ProfileGroup title="Academic details" entries={academic} />
+      {school.length > 0 && <ProfileGroup title="School details" entries={school} />}
+      {'skills' in profile && <ProfileGroup title="Skills" entries={[["skills", profile.skills]]} />}
+      {other.length > 0 && <ProfileGroup title="Additional details" entries={other} />}
+      <div className="student-cert-footer">Student profile record · Digital authenticity not verified</div>
+    </div></div>}
+    {tab === 'verification' && <div className="profile-panel"><h2>Verification</h2><p>The student data was read successfully. This JSON has no issuer signature or verifiable credential proof, so the identity, school, and claims cannot be authenticated from this file alone.</p><div className="audit-grid"><AuditItem label="JSON format" value="Readable" /><AuditItem label="Student profile" value="Recognized" /><AuditItem label="Digital signature" value="Not provided" /><AuditItem label="Authenticity" value="Unverified" /></div></div>}
+    {tab === 'audit' && <div className="profile-panel"><h2>Audit</h2><div className="audit-grid"><AuditItem label="Record type" value="Student profile JSON" /><AuditItem label="Source" value={source} /><AuditItem label="Student fields" value={Object.keys(profile).length} /><AuditItem label="School fields" value={school.length} /><AuditItem label="Skills listed" value={Array.isArray(profile.skills) ? profile.skills.length : 0} /><AuditItem label="Proof field" value={profile.proof ? 'Present but not validated' : 'Absent'} /></div></div>}
+    {tab === 'json' && <div className="json-panel profile-json"><div className="json-actions"><button className="btn btn-secondary btn-sm" onClick={() => navigator.clipboard?.writeText(json)}>Copy JSON</button><button className="btn btn-secondary btn-sm" onClick={downloadProfile}>Download JSON</button></div><pre>{json}</pre></div>}
+  </section>;
+}
+
+function ProfileGroup({ title, entries }) {
+  return <div className="profile-group"><h2>{title}</h2><div className="profile-grid">{entries.map(([key, value]) =>
+    <div className="profile-field" key={key}><span className="profile-label">{profileLabel(key)}</span><ProfileValue value={value} field={key} /></div>
+  )}</div></div>;
+}
+
+function ProfileValue({ value, field }) {
+  if (Array.isArray(value)) return <ul className="profile-list">{value.map((item, index) => <li key={index}><ProfileValue value={item} /></li>)}</ul>;
+  if (value && typeof value === 'object') return <div className="profile-nested">{Object.entries(value).map(([key, nested]) =>
+    <div key={key}><span className="profile-label">{profileLabel(key)}</span><ProfileValue value={nested} field={key} /></div>
+  )}</div>;
+  const display = value == null || value === '' ? '—' : String(value);
+  return <strong className="profile-value">{field === 'attendancePercentage' && value != null && value !== '' ? `${display}%` : display}</strong>;
 }
 
 function AuditItem({ label, value }) { return <div className="audit-item"><span className="audit-label">{label}</span><strong className="audit-value">{value}</strong></div>; }

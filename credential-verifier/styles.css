@@ -1689,3 +1689,188 @@ h1, h2, h3, h4 {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.profile-status {
+  border-color: rgba(56, 189, 248, 0.35);
+  background: linear-gradient(90deg, rgba(56, 189, 248, 0.12), var(--bg-card));
+}
+
+.profile-status .status-icon-wrap {
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--accent-cyan);
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.student-certificate {
+  padding: 2.5rem;
+}
+
+.student-cert-heading,
+.student-cert-name,
+.student-cert-footer {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+}
+
+.student-cert-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--cert-border);
+}
+
+.student-cert-heading strong {
+  color: var(--cert-ink);
+  font-size: 1.45rem;
+}
+
+.student-cert-heading > span:last-child,
+.student-cert-name p,
+.student-cert-name > span,
+.student-cert-footer {
+  color: var(--cert-muted);
+}
+
+.student-cert-name {
+  padding: 2rem 0 0.5rem;
+}
+
+.student-cert-name h2 {
+  margin: 0.4rem 0;
+  color: var(--cert-ink);
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 5vw, 2.6rem);
+}
+
+.student-cert-footer {
+  padding-top: 1.5rem;
+  font-size: 0.8rem;
+}
+
+.student-certificate .profile-group {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  border-color: var(--cert-border);
+}
+
+.student-certificate .profile-group h2,
+.student-certificate .profile-value,
+.student-certificate .profile-list {
+  color: var(--cert-ink);
+}
+
+.student-certificate .profile-label {
+  color: var(--cert-muted);
+}
+
+.student-certificate .profile-field {
+  background: var(--cert-paper);
+  border-color: var(--cert-border);
+}
+
+.profile-panel {
+  padding: 1.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+
+.profile-panel h2 {
+  margin-bottom: 0.75rem;
+  color: var(--text-primary);
+}
+
+.profile-panel > p {
+  max-width: 760px;
+  margin-bottom: 1.5rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.profile-group {
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+
+.profile-group h2 {
+  margin-bottom: 1.25rem;
+  color: var(--text-primary);
+  font-size: 1.15rem;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.9rem;
+}
+
+.profile-field {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+}
+
+.profile-label {
+  display: block;
+  margin-bottom: 0.4rem;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.profile-value {
+  display: block;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.profile-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--text-primary);
+}
+
+.profile-list li + li,
+.profile-nested > div + div {
+  margin-top: 0.5rem;
+}
+
+.profile-nested .profile-label {
+  margin-top: 0.5rem;
+}
+
+@media print {
+  .student-profile .profile-group {
+    display: block !important;
+  }
+
+  .student-profile .status-banner,
+  .student-profile .tabs-nav,
+  .student-profile .profile-panel,
+  .student-profile .profile-json {
+    display: none !important;
+  }
+
+  .student-certificate {
+    padding: 1.5rem !important;
+  }
+
+  .profile-group,
+  .profile-field {
+    background: #fff !important;
+    color: #000 !important;
+    break-inside: avoid;
+  }
+}
