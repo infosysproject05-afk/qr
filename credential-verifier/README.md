@@ -101,3 +101,14 @@ Simply deploy this directory. It will run `npm start` (starting `server.js` on p
 
 ### Option B: Vercel / Netlify / Cloudflare Pages
 You can deploy `index.html`, `styles.css`, and `app.js` as static assets. The client application includes fallback CORS fetching gateways so remote storage URLs can be fetched directly in browser.
+
+For Vercel public-link storage, connect a Vercel KV/Redis store and add these production environment variables:
+
+```text
+KV_REST_API_URL
+KV_REST_API_TOKEN
+```
+
+The API also accepts `VERCEL_KV_REST_API_URL` and `VERCEL_KV_REST_API_TOKEN`. Without these variables,
+local development uses temporary in-memory storage and shared links can be lost when a serverless
+instance is recycled.

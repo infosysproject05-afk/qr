@@ -1,4 +1,4 @@
-import store from '../_credentialStore.js';
+import { deleteCredential, getCredential } from '../_credentialStore.js';
 
 function setCors(response) {
   response.setHeader('Access-Control-Allow-Origin', '*');
@@ -6,7 +6,7 @@ function setCors(response) {
   response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
 
-export default function handler(request, response) {
+export default async function handler(request, response) {
   setCors(response);
 
   if (request.method === 'OPTIONS') {
@@ -21,7 +21,14 @@ export default function handler(request, response) {
   }
 
   if (request.method === 'GET') {
-    if (!store.has(id)) {
+    let credential;
+    try {
+      credential = await getCredential(id);
+    } catch (error) {
+      response.status(503).json({ error: `Credential store unavailable: ${error.message}` });
+      return;
+    }
+    if (!credential) {
       response.status(404).json({ error: 'Credential not found' });
       return;
     }
@@ -31,12 +38,17 @@ export default function handler(request, response) {
       response.status(302).setHeader('Location', `/?vc=${encodeURIComponent(credentialUrl)}`).end();
       return;
     }
-    response.status(200).json(store.get(id));
+    response.status(200).json(credential);
     return;
   }
 
   if (request.method === 'DELETE') {
-    store.delete(id);
+    try {
+      await deleteCredential(id);
+    } catch (error) {
+      response.status(503).json({ error: `Credential store unavailable: ${error.message}` });
+      return;
+    }
     response.status(200).json({ status: 'unshared' });
     return;
   }

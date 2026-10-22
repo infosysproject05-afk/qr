@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import store from './_credentialStore.js';
+import { saveCredential } from './_credentialStore.js';
 
 function setCors(response) {
   response.setHeader('Access-Control-Allow-Origin', '*');
@@ -13,7 +13,7 @@ function serverBase(request) {
   return `${protocol}://${host}`;
 }
 
-export default function handler(request, response) {
+export default async function handler(request, response) {
   setCors(response);
 
   if (request.method === 'OPTIONS') {
@@ -42,7 +42,12 @@ export default function handler(request, response) {
   }
 
   const id = crypto.randomUUID();
-  store.set(id, payload.vp ?? payload);
+  try {
+    await saveCredential(id, payload.vp ?? payload);
+  } catch (error) {
+    response.status(503).json({ error: `Credential store unavailable: ${error.message}` });
+    return;
+  }
   const base = serverBase(request);
   const credentialUrl = `${base}/api/credentials/${id}`;
 
