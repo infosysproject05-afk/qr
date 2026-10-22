@@ -65,6 +65,7 @@ function App() {
   const [pasteValue, setPasteValue] = useState('');
   const [qrOpen, setQrOpen] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
+  const [qrMessage, setQrMessage] = useState('');
   const fileInput = useRef(null);
   const qrImageInput = useRef(null);
   const videoRef = useRef(null);
@@ -174,6 +175,7 @@ function App() {
     }
 
     setQrOpen(false);
+    setQrMessage('');
     stopCamera();
     if (value.startsWith('{') || value.startsWith('[')) {
       try {
@@ -189,19 +191,40 @@ function App() {
   };
 
   const decodeQrImage = file => {
+    setQrMessage('Reading QR image...');
     const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
     image.onload = () => {
-      const canvas = canvasRef.current || document.createElement('canvas');
-      canvas.width = image.naturalWidth;
-      canvas.height = image.naturalHeight;
-      const context = canvas.getContext('2d', { willReadFrequently: true });
-      context.drawImage(image, 0, 0);
-      const result = jsQR(context.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
-      if (result?.data) handleQrPayload(result.data);
-      else setError('No readable QR code was found in that image.');
+      try {
+        const canvas = canvasRef.current || document.createElement('canvas');
+        const scale = Math.min(1, 1800 / Math.max(image.naturalWidth, image.naturalHeight));
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+        const result = jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: 'attemptBoth' });
+        URL.revokeObjectURL(objectUrl);
+        if (result?.data) handleQrPayload(result.data);
+        else {
+          setQrOpen(false);
+          setQrMessage('');
+          setError('No readable QR code was found in that image. Try a sharper, well-lit QR image.');
+        }
+      } catch (decodeError) {
+        URL.revokeObjectURL(objectUrl);
+        setQrOpen(false);
+        setQrMessage('');
+        setError(`Unable to decode the QR image: ${decodeError.message}`);
+      }
     };
-    image.onerror = () => setError('Unable to read the selected QR image.');
-    image.src = URL.createObjectURL(file);
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      setQrOpen(false);
+      setQrMessage('');
+      setError('Unable to read the selected QR image.');
+    };
+    image.src = objectUrl;
   };
 
   const startCamera = async () => {
@@ -296,7 +319,7 @@ function App() {
             <button className="btn btn-primary" type="submit">Verify Credential <span className="btn-arrow">→</span></button>
           </form>
           <div className="quick-actions">
-            <button className="action-chip" type="button" onClick={() => setQrOpen(true)}>▦ Scan QR Code</button>
+            <button className="action-chip" type="button" onClick={() => { setQrMessage(''); setQrOpen(true); }}>▦ Scan QR Code</button>
             <button className="action-chip" type="button" onClick={() => fileInput.current?.click()}>↑ Upload JSON<input ref={fileInput} type="file" accept=".json,.jsonld,application/json,application/ld+json" className="hidden" onChange={handleFile} /></button>
             <button className="action-chip" type="button" onClick={() => setPasteOpen(true)}>‹› Paste Raw JSON</button>
             <button className="action-chip sample-chip" type="button" onClick={loadSample}>★ Try Sample Credential</button>
@@ -311,7 +334,7 @@ function App() {
     </main>
 
     {pasteOpen && <div className="modal-backdrop" role="presentation"><div className="modal-card"><button className="modal-close" onClick={() => setPasteOpen(false)} aria-label="Close">×</button><h2>Paste Credential JSON</h2><textarea value={pasteValue} onChange={event => setPasteValue(event.target.value)} placeholder="Paste a W3C Verifiable Credential JSON payload..." /><button className="btn btn-primary" onClick={handlePaste}>Verify JSON</button></div></div>}
-    {qrOpen && <div className="modal-backdrop" role="presentation"><div className="modal-card qr-modal"><button className="modal-close" onClick={() => { stopCamera(); setQrOpen(false); }} aria-label="Close">×</button><h2>Scan QR Code</h2><p className="modal-help">Use your camera or select a QR image. The code may contain a verification URL or raw credential JSON.</p><video ref={videoRef} className={cameraActive ? 'qr-video' : 'qr-video hidden'} playsInline muted /><canvas ref={canvasRef} className="hidden" /><div className={!cameraActive ? 'qr-placeholder' : 'hidden'}>Camera preview will appear here</div><div className="modal-actions"><button className="btn btn-secondary" onClick={startCamera}>Start Camera</button><button className="btn btn-outline" onClick={() => qrImageInput.current?.click()}>Upload QR Image<input ref={qrImageInput} type="file" accept="image/*" className="hidden" onChange={event => { const [file] = event.target.files; if (file) decodeQrImage(file); event.target.value = ''; }} /></button></div></div></div>}
+    {qrOpen && <div className="modal-backdrop" role="presentation"><div className="modal-card qr-modal"><button className="modal-close" onClick={() => { stopCamera(); setQrOpen(false); }} aria-label="Close">×</button><h2>Scan QR Code</h2><p className="modal-help">Use your camera or select a QR image. The code may contain a verification URL or raw credential JSON.</p>{qrMessage && <p className="qr-message">{qrMessage}</p>}<video ref={videoRef} className={cameraActive ? 'qr-video' : 'qr-video hidden'} playsInline muted /><canvas ref={canvasRef} className="hidden" /><div className={!cameraActive ? 'qr-placeholder' : 'hidden'}>Camera preview will appear here</div><div className="modal-actions"><button className="btn btn-secondary" onClick={startCamera}>Start Camera</button><button className="btn btn-outline" onClick={() => qrImageInput.current?.click()}>Upload QR Image<input ref={qrImageInput} type="file" accept="image/*" className="hidden" onChange={event => { const [file] = event.target.files; if (file) decodeQrImage(file); event.target.value = ''; }} /></button></div></div></div>}
   </>;
 }
 
