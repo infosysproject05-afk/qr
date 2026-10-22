@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import jsQR from 'jsqr';
 import { SAMPLE_CREDENTIAL } from './sampleCredential';
 
 const STEP_LABELS = [
@@ -62,12 +63,21 @@ function App() {
   const [tab, setTab] = useState('certificate');
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteValue, setPasteValue] = useState('');
+  const [qrOpen, setQrOpen] = useState(false);
+  const [cameraActive, setCameraActive] = useState(false);
   const fileInput = useRef(null);
+  const qrImageInput = useRef(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const cameraStream = useRef(null);
+  const scanFrame = useRef(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem('veritrust-theme', theme);
   }, [theme]);
+
+  useEffect(() => () => stopCamera(), []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -137,7 +147,7 @@ function App() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      try { verifyData(JSON.parse(reader.result), `file://${file.name}`); }
+      try { verifyData(JSON.parse(reader.result), `file://${file.name}`).catch(verificationError => setError(verificationError.message)); }
       catch (parseError) { setError(`Invalid JSON file: ${parseError.message}`); }
     };
     reader.readAsText(file);
@@ -145,11 +155,91 @@ function App() {
   };
 
   const handlePaste = () => {
+    if (!pasteValue.trim()) {
+      setError('Paste a JSON credential before verifying.');
+      return;
+    }
     try {
-      verifyData(JSON.parse(pasteValue), 'pasted://json-payload');
+      verifyData(JSON.parse(pasteValue), 'pasted://json-payload').catch(verificationError => setError(verificationError.message));
       setPasteOpen(false);
       setPasteValue('');
     } catch (parseError) { setError(`Invalid JSON: ${parseError.message}`); }
+  };
+
+  const handleQrPayload = payload => {
+    const value = payload.trim();
+    if (!value) {
+      setError('The QR code did not contain a credential or verification link.');
+      return;
+    }
+
+    setQrOpen(false);
+    stopCamera();
+    if (value.startsWith('{') || value.startsWith('[')) {
+      try {
+        verifyData(JSON.parse(value), 'qr://json-payload').catch(verificationError => setError(verificationError.message));
+      } catch (parseError) {
+        setError(`The QR code contains invalid JSON: ${parseError.message}`);
+      }
+      return;
+    }
+
+    setInput(value);
+    verifyUrl(value);
+  };
+
+  const decodeQrImage = file => {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = canvasRef.current || document.createElement('canvas');
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      context.drawImage(image, 0, 0);
+      const result = jsQR(context.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
+      if (result?.data) handleQrPayload(result.data);
+      else setError('No readable QR code was found in that image.');
+    };
+    image.onerror = () => setError('Unable to read the selected QR image.');
+    image.src = URL.createObjectURL(file);
+  };
+
+  const startCamera = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError('Camera scanning requires HTTPS or localhost and a supported browser.');
+      return;
+    }
+    try {
+      cameraStream.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+      videoRef.current.srcObject = cameraStream.current;
+      await videoRef.current.play();
+      setCameraActive(true);
+      const scan = () => {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        if (!video || !canvas || video.readyState < 2 || !cameraStream.current) {
+          scanFrame.current = requestAnimationFrame(scan);
+          return;
+        }
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const result = jsQR(context.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
+        if (result?.data) handleQrPayload(result.data);
+        else scanFrame.current = requestAnimationFrame(scan);
+      };
+      scanFrame.current = requestAnimationFrame(scan);
+    } catch (cameraError) {
+      setError(`Camera access failed: ${cameraError.message}`);
+    }
+  };
+
+  const stopCamera = () => {
+    if (scanFrame.current) cancelAnimationFrame(scanFrame.current);
+    cameraStream.current?.getTracks().forEach(track => track.stop());
+    cameraStream.current = null;
+    setCameraActive(false);
   };
 
   const reset = () => {
@@ -206,8 +296,8 @@ function App() {
             <button className="btn btn-primary" type="submit">Verify Credential <span className="btn-arrow">→</span></button>
           </form>
           <div className="quick-actions">
-            <button className="action-chip" type="button" onClick={() => setError('Camera QR scanning is available through an image upload in this React migration.')}>▦ Scan QR Code</button>
-            <button className="action-chip" type="button" onClick={() => fileInput.current?.click()}>↑ Upload JSON<input ref={fileInput} type="file" accept=".json,.jsonld" className="hidden" onChange={handleFile} /></button>
+            <button className="action-chip" type="button" onClick={() => setQrOpen(true)}>▦ Scan QR Code</button>
+            <button className="action-chip" type="button" onClick={() => fileInput.current?.click()}>↑ Upload JSON<input ref={fileInput} type="file" accept=".json,.jsonld,application/json,application/ld+json" className="hidden" onChange={handleFile} /></button>
             <button className="action-chip" type="button" onClick={() => setPasteOpen(true)}>‹› Paste Raw JSON</button>
             <button className="action-chip sample-chip" type="button" onClick={loadSample}>★ Try Sample Credential</button>
           </div>
@@ -221,6 +311,7 @@ function App() {
     </main>
 
     {pasteOpen && <div className="modal-backdrop" role="presentation"><div className="modal-card"><button className="modal-close" onClick={() => setPasteOpen(false)} aria-label="Close">×</button><h2>Paste Credential JSON</h2><textarea value={pasteValue} onChange={event => setPasteValue(event.target.value)} placeholder="Paste a W3C Verifiable Credential JSON payload..." /><button className="btn btn-primary" onClick={handlePaste}>Verify JSON</button></div></div>}
+    {qrOpen && <div className="modal-backdrop" role="presentation"><div className="modal-card qr-modal"><button className="modal-close" onClick={() => { stopCamera(); setQrOpen(false); }} aria-label="Close">×</button><h2>Scan QR Code</h2><p className="modal-help">Use your camera or select a QR image. The code may contain a verification URL or raw credential JSON.</p><video ref={videoRef} className={cameraActive ? 'qr-video' : 'qr-video hidden'} playsInline muted /><canvas ref={canvasRef} className="hidden" /><div className={!cameraActive ? 'qr-placeholder' : 'hidden'}>Camera preview will appear here</div><div className="modal-actions"><button className="btn btn-secondary" onClick={startCamera}>Start Camera</button><button className="btn btn-outline" onClick={() => qrImageInput.current?.click()}>Upload QR Image<input ref={qrImageInput} type="file" accept="image/*" className="hidden" onChange={event => { const [file] = event.target.files; if (file) decodeQrImage(file); event.target.value = ''; }} /></button></div></div></div>}
   </>;
 }
 
