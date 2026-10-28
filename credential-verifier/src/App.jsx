@@ -6,11 +6,11 @@ import { extractStudentProfile, profileLabel } from './studentProfile.mjs';
 import { scanQrImage } from './qrImage.mjs';
 
 const STEP_LABELS = [
-  'Fetching payload from decentralized storage',
-  'Validating W3C VC & Open Badges JSON-LD schema',
-  'Auditing cryptographic signature & proof suite',
-  'Resolving issuer Decentralized Identifier (DID)',
-  'Checking expiration date & revocation status list'
+  'Reading credential data',
+  'Checking credential structure',
+  'Looking for a proof field',
+  'Reading issuer identifier',
+  'Checking expiration date'
 ];
 
 const formatDate = (value, fallback) => value
@@ -301,31 +301,48 @@ function App() {
           <span className="brand-shield">✓</span>
           <span className="brand-text"><span className="brand-title">VeriTrust<span className="accent-dot">.</span></span><span className="brand-tagline">Credential Verifier</span></span>
         </button>
-        <div className="nav-badges"><span className="status-indicator"><span className="pulse-dot" />W3C VC 1.0 & 2.0 Compliant</span><button className="btn-icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Toggle theme">{theme === 'dark' ? '☼' : '☾'}</button></div>
+        <div className="nav-badges"><span className="status-indicator"><span className="pulse-dot" />Credential workspace</span><button className="btn-icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Toggle theme">{theme === 'dark' ? '☼' : '☾'}</button></div>
       </div>
     </header>
 
     <main className="main-wrapper">
       <section className="hero-section">
-        <div className="hero-chip">◈ Decentralized Credential Verification</div>
-        <h1 className="hero-headline">Instant, Tamper-Evident<br /><span className="gradient-text">Verifiable Credential</span> Verification</h1>
-        <p className="hero-subtext">Scan a QR code, follow a shared link, or paste JSON to view a credential or student profile.</p>
-        <div className="input-card">
-          <form className="verify-form" onSubmit={event => { event.preventDefault(); if (input.trim()) verifyUrl(input); }}>
-            <div className="input-field-wrapper"><span className="input-icon">↗</span><input className="url-input" value={input} onChange={event => setInput(event.target.value)} placeholder="Paste a public credential link..." autoComplete="off" /><button type="button" className={`clear-btn ${input ? '' : 'hidden'}`} onClick={() => setInput('')} aria-label="Clear input">×</button></div>
-            <button className="btn btn-primary" type="submit">Verify Credential <span className="btn-arrow">→</span></button>
-          </form>
-          <div className="quick-actions">
-            <button className="action-chip" type="button" onClick={() => { qrHandled.current = false; setQrMessage(''); setQrOpen(true); }}>▦ Scan QR Code</button>
-            <button className="action-chip" type="button" onClick={() => fileInput.current?.click()}>↑ Upload JSON<input ref={fileInput} type="file" accept=".json,.jsonld,application/json,application/ld+json" className="hidden" onChange={handleFile} /></button>
-            <button className="action-chip" type="button" onClick={() => setPasteOpen(true)}>‹› Paste Raw JSON</button>
-            <button className="action-chip sample-chip" type="button" onClick={loadSample}>★ Try Sample Credential</button>
+        <div className="hero-copy">
+          <div className="hero-chip"><span className="chip-spark">✦</span> CREDENTIAL INTELLIGENCE / 01</div>
+          <h1 className="hero-headline">Make every credential <span className="gradient-text">clear at a glance.</span></h1>
+          <p className="hero-subtext">Open a shared link, scan a QR code, or inspect JSON. See the issuer, claims, proof fields, and expiry in one readable view.</p>
+          <div className="input-card">
+            <div className="input-card-heading"><span>Start with a credential</span><span className="input-card-step">01 / REVIEW</span></div>
+            <form className="verify-form" onSubmit={event => { event.preventDefault(); if (input.trim()) verifyUrl(input); }}>
+              <div className="input-field-wrapper"><span className="input-icon" aria-hidden="true">↗</span><input className="url-input" aria-label="Public credential link" value={input} onChange={event => setInput(event.target.value)} placeholder="Paste a public credential link" autoComplete="off" /><button type="button" className={`clear-btn ${input ? '' : 'hidden'}`} onClick={() => setInput('')} aria-label="Clear input">×</button></div>
+              <button className="btn btn-primary" type="submit">Review link <span className="btn-arrow" aria-hidden="true">→</span></button>
+            </form>
+            <div className="quick-actions">
+              <button className="action-chip" type="button" onClick={() => { qrHandled.current = false; setQrMessage(''); setQrOpen(true); }}><span aria-hidden="true">▦</span> Scan QR</button>
+              <button className="action-chip" type="button" onClick={() => fileInput.current?.click()}><span aria-hidden="true">↑</span> Upload JSON<input ref={fileInput} type="file" accept=".json,.jsonld,application/json,application/ld+json" className="hidden" onChange={handleFile} /></button>
+              <button className="action-chip" type="button" onClick={() => setPasteOpen(true)}><span aria-hidden="true">{`{ }`}</span> Paste JSON</button>
+            </div>
           </div>
+          <div className="hero-footnote"><span className="footnote-line" />Have a credential to explore? <button type="button" onClick={loadSample}>Open a sample <span aria-hidden="true">↗</span></button></div>
+        </div>
+        <div className="hero-visual" aria-hidden="true">
+          <div className="visual-orbit orbit-one" /><div className="visual-orbit orbit-two" />
+          <div className="visual-float float-top"><span className="float-dot" /> STRUCTURE READABLE</div>
+          <div className="visual-document">
+            <div className="visual-document-top"><span className="visual-emblem">✦</span><span>VERITRUST / CREDENTIAL</span><span className="visual-dots">•••</span></div>
+            <div className="visual-overline">DIGITAL RECORD</div>
+            <div className="visual-title">A record you can<br />actually understand.</div>
+            <div className="visual-rule" />
+            <div className="visual-fields"><div><span>ISSUER</span><strong>Example University</strong></div><div><span>RECIPIENT</span><strong>Alex Morgan</strong></div></div>
+            <div className="visual-document-bottom"><span className="visual-seal">✓</span><span>Proof field present<br /><small>Signature not independently validated</small></span><span className="visual-serial">VC — 0248</span></div>
+          </div>
+          <div className="visual-float float-bottom"><span className="mini-grid">▦</span><span>CLAIMS<br /><strong>Ready to inspect</strong></span></div>
+          <span className="visual-caption">A BETTER VIEW OF DIGITAL TRUST</span>
         </div>
         {error && <div className="toast-message">{error}</div>}
       </section>
 
-      {isLoading && <section className="progress-section"><div className="progress-card"><div className="progress-header"><div className="spinner-ring" /><div><h3 className="progress-title">Verifying Credential Authenticity</h3><p className="progress-subtitle">Performing 5-point cryptographic proof & trust registry audit</p></div></div><div className="progress-steps">{STEP_LABELS.map((label, index) => <div className={`step-item ${steps[index]}`} key={label}><span className="step-icon">{steps[index] === 'pass' ? '✓' : index + 1}</span><span>{label}</span></div>)}</div></div></section>}
+      {isLoading && <section className="progress-section"><div className="progress-card"><div className="progress-header"><div className="spinner-ring" /><div><h3 className="progress-title">Reviewing credential</h3><p className="progress-subtitle">Reading structure, proof fields, issuer, and dates</p></div></div><div className="progress-steps">{STEP_LABELS.map((label, index) => <div className={`step-item ${steps[index]}`} key={label}><span className="step-icon">{steps[index] === 'pass' ? '✓' : index + 1}</span><span>{label}</span></div>)}</div></div></section>}
 
       {credential && details && <Result credential={credential} details={details} isValid={isValid} tab={tab} setTab={setTab} reset={reset} downloadJson={downloadJson} copyShare={copyShare} source={source} />}
       {studentProfile && <StudentProfileResult profile={studentProfile} payload={profilePayload} source={source} tab={tab} setTab={setTab} reset={reset} />}
@@ -342,9 +359,9 @@ function Result({ credential, details, isValid, tab, setTab, reset, downloadJson
   const claims = Object.entries(subject).flatMap(([key, value]) => typeof value === 'object' && value !== null ? Object.entries(value).filter(([, nested]) => typeof nested !== 'object').map(([nestedKey, nested]) => [`${key} → ${nestedKey}`, nested]) : [[key, value]]);
   const tabs = ['certificate', 'audit', 'claims', 'json'];
   return <section className="result-section" id="result-section">
-    <div className={`status-banner ${isValid ? 'valid' : 'invalid'}`}><div className="status-icon-wrap">{isValid ? '✓' : '!'}</div><div className="status-info"><div className="status-headline">{isValid ? 'Cryptographically Verified Credential' : 'Credential Expired or Warning'}</div><div className="status-subline">{isValid ? 'Digital signature is authentic, issuer DID is recognized, and credential is valid.' : 'The credential has expired or the cryptographic signature could not be verified.'}</div></div><div className="status-actions"><button className="btn btn-secondary btn-sm" onClick={() => window.print()}>Print / PDF</button><button className="btn btn-secondary btn-sm" onClick={copyShare}>Share</button><button className="btn btn-outline btn-sm" onClick={reset}>Verify Another</button></div></div>
+    <div className={`status-banner ${isValid ? 'valid' : 'invalid'}`}><div className="status-icon-wrap">{isValid ? '✓' : '!'}</div><div className="status-info"><div className="status-headline">{isValid ? 'Credential ready to review' : 'Credential needs attention'}</div><div className="status-subline">{isValid ? 'A proof field is present and the credential is not expired. Cryptographic authenticity has not been independently checked.' : 'The credential may be expired or missing a proof field. Inspect the audit details before relying on it.'}</div></div><div className="status-actions"><button className="btn btn-secondary btn-sm" onClick={() => window.print()}>Print / PDF</button><button className="btn btn-secondary btn-sm" onClick={copyShare}>Share</button><button className="btn btn-outline btn-sm" onClick={reset}>Review another</button></div></div>
     <div className="tabs-nav">{tabs.map(item => <button key={item} className={`tab-btn ${tab === item ? 'active' : ''}`} onClick={() => setTab(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</div>
-    {tab === 'certificate' && <div className="certificate-container"><div className="certificate-frame"><div className="cert-header"><div className="cert-label">DIGITAL CREDENTIAL</div><div className="cert-seal">✓</div></div><div className="cert-body"><div className="cert-eyebrow">This credential is awarded to</div><h2 className="cert-recipient">{recipientName}</h2><div className="cert-achievement">{details.title}</div><p className="cert-description">{details.description}</p><div className="cert-meta-grid"><div><span>ISSUED BY</span><strong>{details.issuer.name}</strong><small>{details.issuer.id}</small></div><div><span>ISSUED</span><strong>{formatDate(credential.issuanceDate, 'Verified on record')}</strong><small>{credential.expirationDate ? `Expires ${formatDate(credential.expirationDate)}` : 'No expiration'}</small></div></div></div><div className="cert-footer"><span>Credential ID: {credential.id || 'urn:uuid:credential'}</span><span>Proof: {details.proof.type || 'Verified'}</span></div></div></div>}
+    {tab === 'certificate' && <div className="certificate-container"><div className="certificate-frame"><div className="cert-header"><div className="cert-label">DIGITAL CREDENTIAL</div><div className="cert-seal">✦</div></div><div className="cert-body"><div className="cert-eyebrow">This credential is awarded to</div><h2 className="cert-recipient">{recipientName}</h2><div className="cert-achievement">{details.title}</div><p className="cert-description">{details.description}</p><div className="cert-meta-grid"><div><span>ISSUED BY</span><strong>{details.issuer.name}</strong><small>{details.issuer.id}</small></div><div><span>ISSUED</span><strong>{formatDate(credential.issuanceDate, 'Not specified')}</strong><small>{credential.expirationDate ? `Expires ${formatDate(credential.expirationDate)}` : 'No expiration specified'}</small></div></div></div><div className="cert-footer"><span>Credential ID: {credential.id || 'Not specified'}</span><span>Proof type: {details.proof.type || 'Not specified'}</span></div></div></div>}
     {tab === 'audit' && <div className="audit-grid"><AuditItem label="Proof suite" value={details.proof.type || 'Not specified'} /><AuditItem label="Proof purpose" value={details.proof.proofPurpose || 'assertionMethod'} /><AuditItem label="Issuer DID" value={details.issuer.id} /><AuditItem label="Status" value={details.expired ? 'EXPIRED' : 'ACTIVE'} /><AuditItem label="Issued" value={formatDate(credential.issuanceDate, 'Not specified')} /><AuditItem label="Source" value={source} /></div>}
     {tab === 'claims' && <div className="claims-grid">{claims.map(([key, value]) => <div className="claim-box" key={key}><div className="claim-title">{key}</div><div className="claim-value">{String(value)}</div></div>)}</div>}
     {tab === 'json' && <div className="json-panel"><div className="json-actions"><button className="btn btn-secondary btn-sm" onClick={() => navigator.clipboard?.writeText(JSON.stringify(credential, null, 2))}>Copy JSON</button><button className="btn btn-secondary btn-sm" onClick={downloadJson}>Download JSON</button></div><pre>{JSON.stringify(credential, null, 2)}</pre></div>}
