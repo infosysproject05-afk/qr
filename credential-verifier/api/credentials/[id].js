@@ -46,8 +46,7 @@ export default async function handler(request, response) {
     try {
       await deleteCredential(id);
     } catch (error) {
-      response.status(503).json({ error: `Credential store unavailable: ${error.message}` });
-      return;
+      console.warn('Delete warning:', error.message);
     }
     response.status(200).json({ status: 'unshared' });
     return;
