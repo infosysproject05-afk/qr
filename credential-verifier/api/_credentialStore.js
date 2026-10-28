@@ -3,9 +3,10 @@ import { MongoClient, ServerApiVersion } from 'mongodb';
 const memoryStore = globalThis.__verifierCredentialStore || new Map();
 globalThis.__verifierCredentialStore = memoryStore;
 
-const MONGODB_URI =
-  process.env.MONGODB_URI ||
-  'mongodb+srv://infosysproject05_db_user:Infosys@files.j1exgn9.mongodb.net/?retryWrites=true&w=majority&appName=files';
+const DIRECT_ATLAS_URI =
+  'mongodb://infosysproject05_db_user:Infosys@ac-anqzyfe-shard-00-00.j1exgn9.mongodb.net:27017,ac-anqzyfe-shard-00-01.j1exgn9.mongodb.net:27017,ac-anqzyfe-shard-00-02.j1exgn9.mongodb.net:27017/files?ssl=true&replicaSet=atlas-1dsaq9-shard-0&authSource=admin&retryWrites=true&w=majority';
+
+const MONGODB_URI = process.env.MONGODB_URI || DIRECT_ATLAS_URI;
 
 const DB_NAME = process.env.MONGODB_DB_NAME || 'files';
 const COLLECTION_NAME = process.env.MONGODB_COLLECTION || 'credentials';
@@ -18,20 +19,11 @@ async function getCollection() {
     return client.db(DB_NAME).collection(COLLECTION_NAME);
   }
 
-  if (!MONGODB_URI) {
-    console.warn('[Vercel MongoDB] MONGODB_URI is not set in environment variables.');
-    return null;
-  }
-
   if (!clientPromise) {
-    const mongoClient = new MongoClient(MONGODB_URI, {
-      serverApi: {
-        version: ServerApiVersion.v1,
-        strict: true,
-        deprecationErrors: true,
-      },
-      connectTimeoutMS: 5000,
-      serverSelectionTimeoutMS: 5000,
+    const uri = MONGODB_URI || DIRECT_ATLAS_URI;
+    const mongoClient = new MongoClient(uri, {
+      connectTimeoutMS: 8000,
+      serverSelectionTimeoutMS: 8000,
     });
 
     clientPromise = mongoClient
