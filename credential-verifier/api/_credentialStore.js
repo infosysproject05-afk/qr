@@ -16,6 +16,11 @@ async function getCollection() {
     return client.db(DB_NAME).collection(COLLECTION_NAME);
   }
 
+  if (!MONGODB_URI) {
+    console.warn('[Vercel MongoDB] MONGODB_URI is not set in environment variables.');
+    return null;
+  }
+
   if (!clientPromise) {
     const mongoClient = new MongoClient(MONGODB_URI, {
       serverApi: {
