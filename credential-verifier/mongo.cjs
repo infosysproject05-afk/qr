@@ -14,9 +14,7 @@ try {
 
 const { MongoClient, ServerApiVersion } = require('mongodb');
 
-const MONGODB_URI =
-  process.env.MONGODB_URI ||
-  'mongodb+srv://infosysproject05_db_user:LWJNTaOtG3qkXwMi@files.j1exgn9.mongodb.net/?retryWrites=true&w=majority&appName=files';
+const MONGODB_URI = process.env.MONGODB_URI || '';
 
 const DB_NAME = process.env.MONGODB_DB_NAME || 'files';
 const COLLECTION_NAME = process.env.MONGODB_COLLECTION || 'credentials';
@@ -31,6 +29,11 @@ globalThis.__verifierCredentialStore = memoryFallback;
 
 async function getClient() {
   if (client) return client;
+
+  if (!MONGODB_URI) {
+    lastError = 'MONGODB_URI environment variable is not configured; using memory store.';
+    return null;
+  }
 
   if (!clientPromise) {
     const mongoClient = new MongoClient(MONGODB_URI, {
@@ -70,6 +73,7 @@ async function getClient() {
 
 async function getCollection() {
   const c = await getClient();
+  if (!c) return null;
   return c.db(DB_NAME).collection(COLLECTION_NAME);
 }
 
@@ -84,6 +88,7 @@ async function saveCredential(id, data) {
 
   try {
     const col = await getCollection();
+    if (!col) return;
     await col.updateOne(
       { credentialId: id },
       {
@@ -113,11 +118,13 @@ async function saveCredential(id, data) {
 async function getCredential(id) {
   try {
     const col = await getCollection();
-    const doc = await col.findOne({ credentialId: id });
-    if (doc && doc.data) {
-      // Also update memory fallback
-      memoryFallback.set(id, doc.data);
-      return doc.data;
+    if (col) {
+      const doc = await col.findOne({ credentialId: id });
+      if (doc && doc.data) {
+        // Also update memory fallback
+        memoryFallback.set(id, doc.data);
+        return doc.data;
+      }
     }
   } catch (err) {
     console.warn(`[MongoDB] Failed to query "${id}" from MongoDB (checking memory fallback):`, err.message);
@@ -135,8 +142,10 @@ async function deleteCredential(id) {
   memoryFallback.delete(id);
   try {
     const col = await getCollection();
-    await col.deleteOne({ credentialId: id });
-    console.log(`[MongoDB] Successfully deleted credential "${id}" from MongoDB Atlas`);
+    if (col) {
+      await col.deleteOne({ credentialId: id });
+      console.log(`[MongoDB] Successfully deleted credential "${id}" from MongoDB Atlas`);
+    }
   } catch (err) {
     console.warn(`[MongoDB] Failed to delete "${id}" from MongoDB:`, err.message);
   }
@@ -146,7 +155,7 @@ function getMongoStatus() {
   return {
     connected: Boolean(client),
     lastError,
-    uriMasked: MONGODB_URI.replace(/:([^@]+)@/, ':****@'),
+    uriMasked: MONGODB_URI ? MONGODB_URI.replace(/:([^@]+)@/, ':****@') : 'Not Configured',
   };
 }
 

@@ -3,9 +3,7 @@ import { MongoClient, ServerApiVersion } from 'mongodb';
 const memoryStore = globalThis.__verifierCredentialStore || new Map();
 globalThis.__verifierCredentialStore = memoryStore;
 
-const MONGODB_URI =
-  process.env.MONGODB_URI ||
-  'mongodb+srv://infosysproject05_db_user:LWJNTaOtG3qkXwMi@files.j1exgn9.mongodb.net/?retryWrites=true&w=majority&appName=files';
+const MONGODB_URI = process.env.MONGODB_URI || '';
 
 const DB_NAME = process.env.MONGODB_DB_NAME || 'files';
 const COLLECTION_NAME = process.env.MONGODB_COLLECTION || 'credentials';
